@@ -16,23 +16,22 @@
 `define WAKE 8'd255
 
 module print_control (
-    input  logic       CLOCK_50,
-	 input  logic [1:0] KEY,
-    input  logic [7:0] SW,
+    input  logic       clk, rst_l, rdy,
+    input  logic [7:0] ascii,
     output logic       done,
-	 output  logic [4:0] GPIO);
+	 output  logic      tx, gnd);
 
     logic [7:0] trans_byte_in;
     logic       trans_done, trans_set_byte;
 
-    assign GPIO[0] = 0; 
+    assign gnd = 0; 
 
-    proto_fsm pfsm (.clk(CLOCK_50), .rst_l(KEY[0]), .trans_done(trans_done), 
-                    .recv_rdy(KEY[1]), .recv_byte_in(SW), .trans_byte_in(trans_byte_in),
+    proto_fsm pfsm (.clk(clk), .rst_l(rst_l), .trans_done(trans_done), 
+                    .recv_rdy(rdy), .recv_byte_in(ascii), .trans_byte_in(trans_byte_in),
                     .trans_set_byte(trans_set_byte), .recv_done(done));
     
-    trans_fsm tfsm (.clk(CLOCK_50), .rst_l(KEY[0]), .set_byte(trans_set_byte),
-                    .byte_in(trans_byte_in), .tx(GPIO[4]), .done(trans_done));
+    trans_fsm tfsm (.clk(clk), .rst_l(rst_l), .set_byte(trans_set_byte),
+                    .byte_in(trans_byte_in), .tx(tx), .done(trans_done));
 
 endmodule: print_control
 
