@@ -15,24 +15,26 @@
 `define SEC_DELAY 26'd50000000
 `define WAKE 8'd255
 
-module print_ctrl (
-    input  logic       clk, rst_l, rdy, rx,
-    input  logic [7:0] char,
-    output logic       tx, gnd, done);
+module print_control (
+    input  logic       CLOCK_50,
+	 input  logic [1:0] KEY,
+    input  logic [7:0] SW,
+    output logic       done,
+	 output  logic [4:0] GPIO);
 
     logic [7:0] trans_byte_in;
     logic       trans_done, trans_set_byte;
 
-    assign gnd = 0; 
+    assign GPIO[0] = 0; 
 
-    proto_fsm pfsm (.clk(clk), .rst_l(rst_l), .trans_done(trans_done), 
-                    .recv_rdy(rdy), .recv_byte_in(char), .trans_byte_in(trans_byte_in),
-                    .trans_set_byte(trans_set_byte), recv_done(done));
+    proto_fsm pfsm (.clk(CLOCK_50), .rst_l(KEY[0]), .trans_done(trans_done), 
+                    .recv_rdy(KEY[1]), .recv_byte_in(SW), .trans_byte_in(trans_byte_in),
+                    .trans_set_byte(trans_set_byte), .recv_done(done));
     
-    trans_fsm tfsm (.clk(clk), .rst_l(rst_l), .set_byte(trans_set_byte),
-                    .byte_in(trans_byte_in), .tx(tx), .done(trans_done));
+    trans_fsm tfsm (.clk(CLOCK_50), .rst_l(KEY[0]), .set_byte(trans_set_byte),
+                    .byte_in(trans_byte_in), .tx(GPIO[4]), .done(trans_done));
 
-endmodule: print_ctrl
+endmodule: print_control
 
 module proto_fsm (
     input  logic       clk, rst_l, trans_done, recv_rdy,
@@ -40,7 +42,7 @@ module proto_fsm (
     output logic [7:0] trans_byte_in,
     output logic       trans_set_byte, recv_done);
 
-    enum logic {s_init, s_char} cs, ns;
+    enum logic [1:0] {s_delay, s_init, s_char} cs, ns;
 
     logic [25:0] delay_count;
     logic inc_delay;
@@ -48,7 +50,7 @@ module proto_fsm (
 
     always_ff @(posedge clk, negedge rst_l) begin
         if (~rst_l) begin
-            cs <= s_init;
+            cs <= s_delay;
             delay_count <= 26'd0;
         end 
         else begin
@@ -98,23 +100,26 @@ module trans_fsm (
     logic [7:0]  trans_byte;
     logic        clr_bit, inc_bit, clr_sample, inc_sample;
     logic        clr_byte, shift;
-
+	 logic [7:0]  seen_byte;
+	 
     always_ff @(posedge clk, negedge rst_l) begin
         if (~rst_l) begin
             cs <= s_idle;
             sample_count <= 'd0;
             bit_count <= 'd0;
             trans_byte <= 8'd0;
+				seen_byte <= 0;
         end 
         else begin
             cs <= ns;
-            sample_count <= (clr_sample) ? 'd0 : 
-                            ((inc_sample) ? sample_count + 'd1 : sample_count);
-            bit_count <= (clr_bit) ? 'd0 : 
-                         ((inc_bit) ? bit_count + 'd1 : bit_count);
-            trans_byte <= (clr_byte) ? 'd0 :
+            sample_count <= (clr_sample) ? 13'd0 : 
+                            ((inc_sample) ? sample_count + 13'd1 : sample_count);
+            bit_count <= (clr_bit) ? 4'd0 : 
+                         ((inc_bit) ? bit_count + 4'd1 : bit_count);
+            trans_byte <= (clr_byte) ? 8'd0 :
                           ((shift) ? {1'b0, trans_byte[7:1]} :
-                          ((set_byte) ? byte_in : trans_byte));
+                          ((set_byte && (seen_byte != byte_in)) ? byte_in : trans_byte));
+				seen_byte <= byte_in;
         end
     end
 
@@ -147,11 +152,11 @@ module trans_fsm (
                 inc_bit = (sample_count == `BAUD_NUM);
                 inc_sample = 1'b1;
                 clr_sample = (sample_count == `BAUD_NUM);
-                clr_bit = (sample_count == `BAUD_NUM);
             end
             s_stop: begin
                 ns = (sample_count == `BAUD_NUM) ? s_idle : s_stop;
                 tx = `STOP;
+					 clr_bit = 1;
                 clr_byte = (sample_count == `BAUD_NUM);
                 inc_sample = 1'b1;
                 clr_sample = (sample_count == `BAUD_NUM);
